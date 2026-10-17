@@ -1,0 +1,18 @@
+{
+  "runtime": {
+    "python": "3.13.5",
+    "matplotlib": "3.10.0",
+    "system": "Windows-11-10.0.26200-SP0"
+  },
+  "results": {
+    "engineering_max_internal_imbalance_W": 0.0,
+    "engineering_total_flow_W": 5220.0,
+    "illustrative_max_internal_imbalance": 0.0,
+    "proportionality": "single scale factor verified geometrically in the test suite"
+  },
+  "animation": {
+    "file": "commissioning.gif",
+    "frames": 41,
+    "content": "each frame is a fully re-balanced engineering table at that load fraction"
+  }
+}
