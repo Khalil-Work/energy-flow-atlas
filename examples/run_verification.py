@@ -7,7 +7,7 @@ Two tables:
 2. Sample-allocation demo table explicitly labeled illustrative.
 
 Outputs: sankey figures (engineering + illustrative), balance CSVs,
-41-frame GIF (progressive commissioning: load fraction 0..1, each frame a
+41-frame GIF (steady operating-point sweep: load fraction 0.05..1, each frame a
 fully re-balanced table), run_summary.json.
 """
 
@@ -45,7 +45,9 @@ plt.rcParams.update(
 
 
 def build_engineering(load_fraction=1.0):
-    """Balanced engineering table (supply node balances via a return path)."""
+    """Steady energy ledger; recirculating air is not recirculating power."""
+    if not np.isfinite(load_fraction) or not 0 <= load_fraction <= 1:
+        raise ValueError("load_fraction must be finite and in [0, 1]")
     fan = 300.0 * load_fraction
     equip = 1200.0 * load_fraction
     envelope = 150.0 * load_fraction
@@ -56,9 +58,9 @@ def build_engineering(load_fraction=1.0):
         internal_nodes=("room", "supply", "return"),
         title="Air-handling energy balance (computed operating point)",
     )
-    # Supply air path: fan power enters supply; duct loss leaves; the rest
-    # is delivered to the room; room exhaust returns through the return
-    # node back to the fan (closed air loop, energy accounted).
+    # Fan work becomes heat; equipment/envelope add heat in the room.
+    # The coil removes ALL room heat. No energy is credited back to the
+    # electrical fan source merely because the air itself recirculates.
     t.add("fan power", "supply", fan)
     t.add("supply", "duct loss", duct_loss)
     t.add("supply", "room", delivered)
@@ -66,23 +68,24 @@ def build_engineering(load_fraction=1.0):
     t.add("envelope gain", "room", envelope)
     room_out = delivered + equip + envelope
     t.add("room", "return", room_out)
-    t.add("return", "coil", room_out - fan)  # coil removes the net
-    t.add("return", "fan power", fan)        # recovered air-side energy
+    t.add("return", "cooling coil", room_out)
     return t
 
 
 def illustrative_table():
     t = FlowTable(
         "samples", "count",
+        internal_nodes=("cleaning", "screening", "training split"),
         illustrative=True,
         title="Sample allocation across processing stages",
     )
     t.add("raw batch", "cleaning", 1000)
     t.add("cleaning", "rejected", 40)
-    t.add("cleaning", "feature extraction", 960)
-    t.add("feature extraction", "discarded features", 110)
-    t.add("feature extraction", "training split", 850)
+    t.add("cleaning", "screening", 960)
+    t.add("screening", "screened out", 110)
+    t.add("screening", "training split", 850)
     t.add("training split", "held-out eval", 150)
+    t.add("training split", "training set", 700)
     return t
 
 
@@ -98,12 +101,13 @@ def render_and_save(table, filename):
 
 def write_balance_csv(table, filename):
     rep = table.check()
-    rows = ["node,inflow,outflow,imbalance,is_internal"]
+    rows = ["node,inflow,outflow,imbalance,is_internal,quantity,unit,illustrative"]
     for node in sorted(set(rep.inflow) | set(rep.outflow)):
         rows.append(
             f"{node},{rep.inflow.get(node, 0.0):.6f},"
             f"{rep.outflow.get(node, 0.0):.6f},"
-            f"{rep.imbalance[node]:.6f},{int(node in table.internal)}"
+            f"{rep.imbalance[node]:.6f},{int(node in table.internal)},"
+            f"{table.quantity},{table.unit},{int(table.illustrative)}"
         )
     (RESULTS / filename).write_text("\n".join(rows), encoding="utf-8")
     return rep
@@ -111,16 +115,32 @@ def write_balance_csv(table, filename):
 
 def make_gif(frames=41):
     fracs = np.linspace(0.05, 1.0, frames)
-    fig, ax = plt.subplots(figsize=(11.0, 5.8), dpi=120)
+    fig, ax = plt.subplots(figsize=(11.0, 6.0), dpi=100)
+    fig.subplots_adjust(left=0.02, right=0.98, bottom=0.05, top=0.82)
+    # Fixed physical scale: widths grow with actual W rather than normalizing
+    # every operating point back to the same full-size diagram.
+    scale = (0.78 - 2 * 0.10) / 1650.0
+    frame_rows = []
     writer = mpl_animation.PillowWriter(fps=8)
 
-    with writer.saving(fig, RESULTS / "commissioning.gif", dpi=120):
+    with writer.saving(fig, RESULTS / "commissioning.gif", dpi=100):
         for f in fracs:
             ax.clear()
             t = build_engineering(f)
-            render_sankey(t, ax=ax)
+            report = t.check()
+            render_sankey(t, ax=ax, flow_scale=scale)
+            ax.set_title(f"Air-handling load sweep · {f:.1%} of rated input\n"
+                         f"Fan {300*f:.1f} W + equipment {1200*f:.1f} W + envelope {150*f:.1f} W",
+                         fontsize=11, pad=12)
+            fig.texts.clear()
+            fig.text(0.5, 0.025, "Steady operating points · fixed W-to-height scale · not a startup transient",
+                     ha="center", fontsize=9, color=GRAY)
+            for row in t.rows:
+                frame_rows.append(f"{f:.8f},{row.source},{row.target},{row.value:.8f},W,{report.max_abs_imbalance:.12g}")
             writer.grab_frame()
     plt.close(fig)
+    (RESULTS / "commissioning_flows.csv").write_text(
+        "load_fraction,source,target,power,unit,max_internal_imbalance\n" + "\n".join(frame_rows), encoding="utf-8")
     return frames
 
 
@@ -145,14 +165,19 @@ def main():
         },
         "results": {
             "engineering_max_internal_imbalance_W": rep.max_abs_imbalance,
-            "engineering_total_flow_W": sum(r.value for r in eng.rows),
+            "engineering_edge_sum_W": sum(r.value for r in eng.rows),
+            "external_power_input_W": 1650.0,
+            "cooling_coil_W": rep.inflow["cooling coil"],
+            "duct_loss_W": rep.inflow["duct loss"],
             "illustrative_max_internal_imbalance": rep_ill.max_abs_imbalance,
             "proportionality": "single scale factor verified geometrically "
                                "in the test suite",
         },
         "animation": {"file": "commissioning.gif", "frames": frames,
-                      "content": "each frame is a fully re-balanced "
-                                 "engineering table at that load fraction"},
+                      "load_fraction_range": [0.05, 1.0],
+                      "fixed_height_per_W": (0.78 - 2 * 0.10) / 1650.0,
+                      "content": "steady operating-point sweep; fixed physical scale; "
+                                 "each table is balanced; not a startup transient"},
     }
     (RESULTS / "run_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary["results"], indent=2))

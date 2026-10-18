@@ -23,8 +23,7 @@ from energy_flow_atlas import FlowTable, render_sankey
 
 
 def balanced_table():
-    # Hand-checkable: 100 W in, splits 60/40, recombines to 90 out with
-    # 10 W loss declared at the internal node.
+    # Hand-checkable: 100 W in, splits into 60 W useful load / 40 W loss.
     t = FlowTable("energy", "W",
                  internal_nodes=("converter", "stage"),
                  title="demo")
@@ -116,3 +115,113 @@ def test_rendering_produces_proportional_ribbons():
     scales = [h / v for h, v in zip(sorted(widths, reverse=True), values)]
     np.testing.assert_allclose(scales, scales[0], rtol=1e-10)
     plt.close(fig)
+
+
+def test_constructor_rejects_silent_unit_relabeling():
+    from energy_flow_atlas import FlowRow
+    with pytest.raises(ValueError, match="mixed units"):
+        FlowTable("energy", "W", rows=[FlowRow("a", "b", 1.0, "kW")])
+    table = FlowTable("energy", "W", rows=[FlowRow("a", "b", 1000.0, "W")])
+    assert table.rows[0].value == 1000.0
+
+
+def test_custom_title_keeps_illustrative_disclosure():
+    table = FlowTable("samples", "count", illustrative=True, title="Allocation")
+    table.add("a", "b", 1)
+    fig, ax = plt.subplots()
+    render_sankey(table, ax)
+    assert "illustrative" in ax.get_title()
+    plt.close(fig)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), -1, True, "1e-9"])
+def test_invalid_tolerance_cannot_silently_pass_balance(bad):
+    with pytest.raises(ValueError, match="tolerance"):
+        balanced_table().check(bad)
+
+
+@pytest.mark.parametrize("bad", [12, [], " "])
+def test_invalid_node_names_rejected(bad):
+    with pytest.raises(ValueError, match="node"):
+        FlowTable("energy", "W").add(bad, "sink", 1)
+
+
+def test_absent_internal_node_is_not_vacuously_balanced():
+    table = FlowTable("energy", "W", internal_nodes=("typo",)).add("a", "b", 1)
+    with pytest.raises(ValueError, match="absent"):
+        table.check()
+
+
+def test_aggregate_overflow_is_an_explicit_error():
+    table = FlowTable("energy", "W").add("a", "b", 1e308).add("a", "c", 1e308)
+    with pytest.raises(ValueError, match="aggregate"):
+        table.check()
+
+
+def test_rendering_enforces_conservation_and_rejects_cycles():
+    broken = FlowTable("energy", "W", internal_nodes=("b",))
+    broken.add("a", "b", 10).add("b", "c", 7)
+    with pytest.raises(ValueError, match="imbalanced"):
+        render_sankey(broken)
+    cyclic = FlowTable("energy", "W").add("a", "b", 10).add("b", "a", 10)
+    assert cyclic.check().balanced  # accounting itself supports cycles
+    with pytest.raises(ValueError, match="cycle"):
+        render_sankey(cyclic)
+
+
+def test_ribbon_has_positive_area_and_correct_interior_thickness():
+    table = FlowTable("energy", "W").add("source", "sink", 100)
+    fig, ax = plt.subplots()
+    render_sankey(table, ax)
+    polygon = next(p for p in ax.patches if p.get_gid().startswith("flow:"))
+    points = polygon.get_xy()
+    area = abs(np.sum(points[:-1, 0] * points[1:, 1] - points[1:, 0] * points[:-1, 1])) / 2
+    left, right = points[:, 0].min(), points[:, 0].max()
+    expected_height = 0.78
+    assert area == pytest.approx((right - left) * expected_height)
+    # Interior vertical cuts independently intersect the actual polygon edges.
+    for x in np.linspace(left, right, 13)[1:-1]:
+        crossings = []
+        for a, b in zip(points[:-1], points[1:]):
+            if min(a[0], b[0]) <= x < max(a[0], b[0]):
+                crossings.append(a[1] + (x-a[0]) / (b[0]-a[0]) * (b[1]-a[1]))
+        assert len(crossings) == 2
+        assert abs(crossings[1] - crossings[0]) == pytest.approx(expected_height)
+    plt.close(fig)
+
+
+def test_reordered_edges_keep_true_node_connections_and_bar_throughput():
+    original = balanced_table()
+    reordered = FlowTable("energy", "W", rows=list(reversed(original.rows)), internal_nodes=original.internal)
+    layouts = []
+    for table in (original, reordered):
+        fig, ax = plt.subplots()
+        render_sankey(table, ax)
+        nodes = {p.get_gid()[5:]: p for p in ax.patches if p.get_gid().startswith("node:")}
+        ribbons = {p.get_gid(): p for p in ax.patches if p.get_gid().startswith("flow:")}
+        report = table.check()
+        scale = nodes["converter"].get_height() / 100
+        for name, bar in nodes.items():
+            assert bar.get_height() == pytest.approx(max(report.inflow[name], report.outflow[name]) * scale)
+        for row in table.rows:
+            vertices = ribbons[f"flow:{row.source}->{row.target}"].get_xy()
+            assert vertices[:, 0].min() == pytest.approx(nodes[row.source].get_x() + nodes[row.source].get_width())
+            assert vertices[:, 0].max() == pytest.approx(nodes[row.target].get_x())
+        layouts.append({name: (bar.get_x(), bar.get_y(), bar.get_height()) for name, bar in nodes.items()})
+        plt.close(fig)
+    assert layouts[0] == layouts[1]
+
+
+def test_fixed_scale_changes_width_with_physical_load():
+    from examples.run_verification import build_engineering
+    heights = []
+    for load in (0.05, 1.0):
+        table = build_engineering(load)
+        report = table.check()
+        assert report.inflow["cooling coil"] == pytest.approx(1635 * load)
+        assert report.inflow["duct loss"] + report.inflow["cooling coil"] == pytest.approx(1650 * load)
+        fig, ax = plt.subplots()
+        render_sankey(table, ax, flow_scale=0.0003)
+        heights.append(next(p.get_height() for p in ax.patches if p.get_gid() == "node:cooling coil"))
+        plt.close(fig)
+    assert heights[0] / heights[1] == pytest.approx(0.05)
