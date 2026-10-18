@@ -1,0 +1,9 @@
+node,inflow,outflow,imbalance,is_internal,quantity,unit,illustrative
+cleaning,1000.000000,1000.000000,0.000000,1,samples,count,1
+held-out eval,150.000000,0.000000,150.000000,0,samples,count,1
+raw batch,0.000000,1000.000000,-1000.000000,0,samples,count,1
+rejected,40.000000,0.000000,40.000000,0,samples,count,1
+screened out,110.000000,0.000000,110.000000,0,samples,count,1
+screening,960.000000,960.000000,0.000000,1,samples,count,1
+training set,700.000000,0.000000,700.000000,0,samples,count,1
+training split,850.000000,850.000000,0.000000,1,samples,count,1

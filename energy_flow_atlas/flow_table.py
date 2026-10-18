@@ -1,28 +1,38 @@
-"""Energy Flow Atlas: validated engineering flow tables and Sankey diagrams.
-
-A flow table is a list of rows (source, target, value, unit, label) plus
-metadata (default unit, quantity name). Validation:
-
-- every value must be finite and >= 0 (mass/energy flows are
-  non-negative; direction lives in source->target);
-- ONE consistent unit per table (mixed units raise, with the recorded
-  unit per row);
-- node balance: for the declared external nodes (net sources/sinks),
-  imbalance is reported per node and checked against a tolerance; for
-  internal nodes the balance must close within tolerance (conservation).
-
-Sankey rendering uses Matplotlib's sankey (via matplotlib.sankey) or a
-clear horizontal-bar flow diagram when the Sankey layout is not
-appropriate; the renderer states exactly what it draws. Illustrative
-demonstration data must be labeled as such at creation time
-(``illustrative=True``) and carries the label into every output.
-"""
-
+"""Single-quantity, single-unit transfer tables and node conservation."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
+from numbers import Real
 
 __all__ = ["FlowTable", "FlowRow", "BalanceReport"]
+
+
+def _name(value, kind):
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{kind} must be a non-empty string")
+    return value
+
+
+def _nonnegative(value, kind):
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise ValueError(f"{kind} must be numeric")
+    value = float(value)
+    if not math.isfinite(value):
+        raise ValueError(f"{kind} must be finite")
+    if value < 0:
+        raise ValueError(f"{kind} must be non-negative")
+    return value
+
+
+def _sum(values):
+    try:
+        result = math.fsum(values)
+    except OverflowError as exc:
+        raise ValueError("aggregate flow exceeds the finite numeric range") from exc
+    if not math.isfinite(result):
+        raise ValueError("aggregate flow must be finite")
+    return result
 
 
 @dataclass(frozen=True)
@@ -44,85 +54,76 @@ class BalanceReport:
 
 
 class FlowTable:
-    """A validated flow table with node-balance accounting."""
+    """Transfers in one unit; declared internal nodes must conserve flow.
+
+    No unit conversion is implicit. Non-internal nodes may be net sources or
+    sinks. Cycles can be accounted for, but the left-to-right renderer requires
+    a directed acyclic graph. ``check`` must be rerun after adding rows.
+    """
 
     def __init__(self, quantity: str, unit: str, rows=None,
                  internal_nodes=(), illustrative=False, title=None):
-        if not quantity or not isinstance(quantity, str):
-            raise ValueError("quantity name must be a non-empty string")
-        if not unit or not isinstance(unit, str):
-            raise ValueError("unit must be a non-empty string")
-        self.quantity = quantity
-        self.unit = unit
-        self.internal = set(internal_nodes)
+        self.quantity = _name(quantity, "quantity name")
+        self.unit = _name(unit, "unit")
+        if isinstance(internal_nodes, str):
+            raise ValueError("internal_nodes must be a collection of node names")
+        self.internal = {_name(n, "internal node") for n in internal_nodes}
+        if not isinstance(illustrative, bool):
+            raise ValueError("illustrative must be a boolean")
         self.illustrative = illustrative
-        self.title = title or (f"{quantity} flow [{unit}]"
-                               + (" — illustrative demonstration data"
-                                  if illustrative else ""))
+        base_title = f"{quantity} flow [{unit}]" if title is None else _name(title, "title")
+        self.title = base_title + (" — illustrative demonstration data" if illustrative else "")
         self.rows: list[FlowRow] = []
-        for r in rows or []:
-            self.add(r.source, r.target, r.value, r.label)
+        for row in (() if rows is None else rows):
+            if not isinstance(row, FlowRow):
+                raise ValueError("rows must contain FlowRow instances")
+            if row.unit != self.unit:
+                raise ValueError(f"mixed units: row {row.unit!r}, table {self.unit!r}")
+            self.add(row.source, row.target, row.value, row.label)
 
     def add(self, source, target, value, label=""):
-        if not source or not target:
-            raise ValueError("source and target must be non-empty node names")
+        source = _name(source, "source node")
+        target = _name(target, "target node")
         if source == target:
             raise ValueError(f"self-flow {source}->{source} is not a transfer")
-        if not isinstance(value, (int, float)):
-            raise ValueError(f"flow value must be numeric, got {value!r}")
-        value = float(value)
-        if value != value or value in (float("inf"), float("-inf")):
-            raise ValueError(f"flow value must be finite, got {value}")
-        if value < 0.0:
-            raise ValueError(
-                f"negative flow {value} from {source} to {target}: direction "
-                "belongs in source->target ordering; split or reverse the row"
-            )
+        value = _nonnegative(value, "flow value")
+        if not isinstance(label, str):
+            raise ValueError("row label must be a string")
         self.rows.append(FlowRow(source, target, value, self.unit, label))
         return self
 
     def totals(self):
-        out = {}
-        for r in self.rows:
-            out[r.source] = out.get(r.source, 0.0) - r.value
-            out[r.target] = out.get(r.target, 0.0) + r.value
-        return out
+        """Return each node's inflow minus outflow, in the table unit."""
+        return self.balance().imbalance
 
     def balance(self, tol=1e-9):
-        """Node balance: inflow - outflow per node.
+        """Report balances; internal error <= tol * max(sum(row values), 1).
 
-        Internal nodes must close within tol*total_scale; external nodes
-        may carry a net imbalance (declared sources/sinks) which is
-        reported, not required to vanish.
+        ``tol`` is finite and nonnegative. The floor of one is expressed in
+        the table unit. Missing declared internal nodes are input errors.
+        Aggregate transfers count edges, not unique energy entering a system.
         """
+        tol = _nonnegative(tol, "tolerance")
         if not self.rows:
             raise ValueError("empty flow table has no balance")
-        total_scale = sum(r.value for r in self.rows)
-        inflow, outflow = {}, {}
-        for r in self.rows:
-            outflow[r.source] = outflow.get(r.source, 0.0) + r.value
-            inflow[r.target] = inflow.get(r.target, 0.0) + r.value
-        nodes = sorted(set(inflow) | set(outflow))
-        imbalance = {n: inflow.get(n, 0.0) - outflow.get(n, 0.0) for n in nodes}
-        max_internal = 0.0
-        for n in nodes:
-            if n in self.internal:
-                max_internal = max(max_internal, abs(imbalance[n]))
-        return BalanceReport(
-            inflow=inflow, outflow=outflow, imbalance=imbalance,
-            max_abs_imbalance=max_internal,
-            balanced=max_internal <= tol * max(total_scale, 1.0),
-        )
+        nodes = sorted({r.source for r in self.rows} | {r.target for r in self.rows})
+        missing = self.internal.difference(nodes)
+        if missing:
+            raise ValueError(f"declared internal nodes absent from table: {sorted(missing)}")
+        total_scale = max(_sum(r.value for r in self.rows), 1.0)
+        inflow = {n: _sum(r.value for r in self.rows if r.target == n) for n in nodes}
+        outflow = {n: _sum(r.value for r in self.rows if r.source == n) for n in nodes}
+        imbalance = {n: inflow[n] - outflow[n] for n in nodes}
+        max_internal = max((abs(imbalance[n]) for n in self.internal), default=0.0)
+        return BalanceReport(inflow, outflow, imbalance, max_internal,
+                             max_internal / total_scale <= tol)
 
     def check(self, tol=1e-9):
-        """Raise unless internal nodes balance within tolerance."""
-        rep = self.balance(tol=tol)
-        if not rep.balanced:
-            worst = max(
-                ((abs(rep.imbalance[n]), n) for n in self.internal), default=(0, "?")
-            )
-            raise ValueError(
-                f"internal node '{worst[1]}' imbalanced by {worst[0]:.6g} "
-                f"{self.unit} (tolerance {tol:.1e} of total flow)"
-            )
-        return rep
+        """Raise with the worst internal node unless the balance closes."""
+        report = self.balance(tol)
+        if not report.balanced:
+            worst = max(self.internal, key=lambda n: abs(report.imbalance[n]))
+            raise ValueError(f"internal node {worst!r} imbalanced by "
+                             f"{abs(report.imbalance[worst]):.6g} {self.unit} "
+                             f"(tolerance {tol:.1e} of total flow)")
+        return report

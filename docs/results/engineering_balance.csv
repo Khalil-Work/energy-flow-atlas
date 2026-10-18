@@ -1,0 +1,9 @@
+node,inflow,outflow,imbalance,is_internal,quantity,unit,illustrative
+cooling coil,1635.000000,0.000000,1635.000000,0,energy,W,0
+duct loss,15.000000,0.000000,15.000000,0,energy,W,0
+envelope gain,0.000000,150.000000,-150.000000,0,energy,W,0
+equipment,0.000000,1200.000000,-1200.000000,0,energy,W,0
+fan power,0.000000,300.000000,-300.000000,0,energy,W,0
+return,1635.000000,1635.000000,0.000000,1,energy,W,0
+room,1635.000000,1635.000000,0.000000,1,energy,W,0
+supply,300.000000,300.000000,0.000000,1,energy,W,0

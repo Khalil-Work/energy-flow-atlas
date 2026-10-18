@@ -1,0 +1,26 @@
+{
+  "runtime": {
+    "python": "3.13.5",
+    "matplotlib": "3.10.0",
+    "system": "Windows-11-10.0.26200-SP0"
+  },
+  "results": {
+    "engineering_max_internal_imbalance_W": 0.0,
+    "engineering_edge_sum_W": 5220.0,
+    "external_power_input_W": 1650.0,
+    "cooling_coil_W": 1635.0,
+    "duct_loss_W": 15.0,
+    "illustrative_max_internal_imbalance": 0.0,
+    "proportionality": "single scale factor verified geometrically in the test suite"
+  },
+  "animation": {
+    "file": "commissioning.gif",
+    "frames": 41,
+    "load_fraction_range": [
+      0.05,
+      1.0
+    ],
+    "fixed_height_per_W": 0.00035151515151515155,
+    "content": "steady operating-point sweep; fixed physical scale; each table is balanced; not a startup transient"
+  }
+}
