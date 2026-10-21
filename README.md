@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/banner.svg" alt="Energy Flow Atlas banner: Sankey ribbons converging through a conserved node with a ledger checkmark" width="100%">
+<img src="docs/banner.png" alt="Energy Flow Atlas banner: Sankey ribbons converging through a conserved node with a ledger checkmark" width="100%">
 
 # 🗺️ Energy Flow Atlas
 
