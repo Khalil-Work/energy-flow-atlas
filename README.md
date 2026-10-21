@@ -10,13 +10,13 @@
 ribbons with a common physical scale — with a reproducible air-handling heat balance,
 an animated load sweep and raw numerical tables.**
 
-[![tests](https://github.com/khalil-official/energy-flow-atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/khalil-official/energy-flow-atlas/actions/workflows/ci.yml)
+[![tests](https://github.com/khalil-work/energy-flow-atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/khalil-work/energy-flow-atlas/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue.svg)](requirements.txt)
 [![tests](https://img.shields.io/badge/tests-23%20passing-brightgreen.svg)](tests)
 [![deps](https://img.shields.io/badge/deps-NumPy%20only%20%2B%20Matplotlib-9cf.svg)](requirements.txt)
-[![repo stars](https://img.shields.io/github/stars/khalil-official/energy-flow-atlas?style=flat&color=yellow)](https://github.com/khalil-official/energy-flow-atlas/stargazers)
-[![last commit](https://img.shields.io/github/last-commit/khalil-official/energy-flow-atlas?color=9cf)](https://github.com/khalil-official/energy-flow-atlas/commits)
+[![repo stars](https://img.shields.io/github/stars/khalil-work/energy-flow-atlas?style=flat&color=yellow)](https://github.com/khalil-work/energy-flow-atlas/stargazers)
+[![last commit](https://img.shields.io/github/last-commit/khalil-work/energy-flow-atlas?color=9cf)](https://github.com/khalil-work/energy-flow-atlas/commits)
 
 [Run it](#%EF%B8%8F-run-it-locally) · [Ledger rules](#-what-this-project-does) · [Animation](#%EF%B8%8F-results-gallery) · [Verification](#%EF%B8%8F-verification-and-practical-limits) · [API](docs/api.md)
 
