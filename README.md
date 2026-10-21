@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/banner.svg" alt="Energy Flow Atlas banner: Sankey ribbons converging through a conserved node with a ledger checkmark" width="100%">
+<img src="docs/banner.png" alt="Energy Flow Atlas banner: Sankey ribbons converging through a conserved node with a ledger checkmark" width="100%">
 
 # 🗺️ Energy Flow Atlas
 
@@ -47,10 +47,10 @@ an animated load sweep and raw numerical tables.**
 
 ```mermaid
 flowchart LR
-    A[transfers as rows] --> B{finite? positive?<br/>units consistent?}
+    A[transfers as rows] --> B{"finite? positive?<br/>units consistent?"}
     B -- no --> E1[❌ ValueError with the offending row]
     B -- yes --> C[graph staging:<br/>nodes placed by connectivity]
-    C --> D{Σ in = Σ out<br/>at each internal node?}
+    C --> D{"Σ in = Σ out<br/>at each internal node?"}
     D -- no --> E2[❌ report residual,<br/>refuse to render]
     D -- yes --> F[ribbons drawn with<br/>common physical scale]
     F --> G[✅ PNG / SVG / GIF + balance CSVs]
