@@ -18,7 +18,7 @@ an animated load sweep and raw numerical tables.**
 [![repo stars](https://img.shields.io/github/stars/khalil-work/energy-flow-atlas?style=flat&color=yellow)](https://github.com/khalil-work/energy-flow-atlas/stargazers)
 [![last commit](https://img.shields.io/github/last-commit/khalil-work/energy-flow-atlas?color=9cf)](https://github.com/khalil-work/energy-flow-atlas/commits)
 
-[Run it](#%EF%B8%8F-run-it-locally) · [Ledger rules](#-what-this-project-does) · [Animation](#%EF%B8%8F-results-gallery) · [Verification](#%EF%B8%8F-verification-and-practical-limits) · [API](docs/api.md)
+[Homepage](https://khalil-work.github.io) · [Run it](#%EF%B8%8F-run-it-locally) · [Ledger rules](#-what-this-project-does) · [Animation](#%EF%B8%8F-results-gallery) · [Verification](#%EF%B8%8F-verification-and-practical-limits) · [API](docs/api.md)
 
 </div>
 
